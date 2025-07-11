@@ -110,7 +110,7 @@ El CSV y la tabla BigQuery contienen:
  `node crawler.js`  
 5. El CSV será guardado automáticamente en la raíz del proyecto con la fecha del día en el nombre.
 6. Ejecutar script Python para post-procesamiento y carga a BigQuery:
-  `node input_tabla_crawler.py`
+  `node input_tabla_scraper.py`
 7. Verificar resultados y datos en BigQuery
 
 ## 📌 Notas
