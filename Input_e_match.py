@@ -1,4 +1,4 @@
-# --- Librerías esenciales para manipulación de datos y conexión ---
+#  Librerías esenciales para manipulación de datos y conexión 
 from datetime import datetime
 import pandas as pd
 import re
