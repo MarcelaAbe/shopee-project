@@ -224,3 +224,108 @@ if bigquery_client is not None:
         print(f"Error al meter datos en BigQuery: {e}")
 else:
     print("El cliente de BigQuery no se inicializó bien.")
+
+import pandas as pd
+from datetime import datetime, datetime as dt
+from melitk.bigquery import BigQueryDatameshClientBuilder, BigQueryClientBuilderError
+
+# --------------------------------------------------------
+# 1. CONEXIÓN CON BIGQUERY Y EXTRACCIÓN DE LA BASE DEL CRAWLER
+# --------------------------------------------------------
+
+# Inicializo df_old vacío solo para evitar errores si la consulta falla
+df_old = pd.DataFrame()
+
+try:
+    # Construyo el cliente de BigQuery usando la configuración del DME
+    bigquery_client = BigQueryDatameshClientBuilder()\
+        .with_dme_name("DME_ATTACH_DME000418", env='DEV')\
+        .build()
+    
+    print("✅ ¡Conexión con BigQuery establecida!")
+
+    # Defino la consulta para obtener los datos de la tabla
+    query = """SELECT * FROM `ddme000418-dn88p8g386x-furyid.TBL.DM_SHOPEE_OFFICIAL_BRANDS`"""
+
+    # Ejecuto la consulta y guardo el resultado como DataFrame
+    response = bigquery_client.query_to_df(query)  
+    df_api = response.df  
+
+    print("✅ ¡Acceso a la tabla confirmado!")
+    print(df_api.head())  
+    print(df_api.columns)
+
+except BigQueryClientBuilderError as e:
+    print(f"Error al construir el cliente: {e}")
+except Exception as e:
+    print(f"Error inesperado: {e}")
+
+# --------------------------------------------------------
+# 2. AJUSTES EN FIRST_APPEARENCE (¡HORA DE LIMPIAR 🔍!)
+# --------------------------------------------------------
+
+# Me aseguro de que la columna FIRST_APPEARENCE esté en formato datetime
+df_api['FIRST_APPEARENCE'] = pd.to_datetime(df_api['FIRST_APPEARENCE'], errors='coerce')
+
+# Creo la máscara para los datos de julio/2025 (ajustar si es necesario en el futuro)
+mask_jul25 = (
+    (df_api['DATE_SCRAPING'].dt.year == 2025) &
+    (df_api['DATE_SCRAPING'].dt.month == 7)
+)
+
+# Tomo todo el histórico fuera de julio/2025 que ya tiene FIRST_APPEARENCE lleno
+historico = df_api.loc[~mask_jul25 & df_api['FIRST_APPEARENCE'].notna()]
+
+# Creo un diccionario que mapea el menor FIRST_APPEARENCE por UNIC_ID
+map_first = (
+    historico
+        .groupby('UNIC_ID')['FIRST_APPEARENCE']
+        .min()
+        .to_dict()
+)
+
+# Para los registros de julio/2025, intento completar FIRST_APPEARENCE usando el diccionario
+df_api.loc[mask_jul25, 'FIRST_APPEARENCE'] = (
+    df_api.loc[mask_jul25, 'UNIC_ID'].map(map_first)
+)
+
+# Para los que aún quedaron sin fecha (NaT), asigno una fecha por defecto (se puede cambiar)
+data_padrao = pd.Timestamp('2025-07-11')
+df_api.loc[mask_jul25, 'FIRST_APPEARENCE'] = (
+    df_api.loc[mask_jul25, 'FIRST_APPEARENCE']
+        .fillna(data_padrao)
+)
+
+# Muestro el resultado para confirmar que todo salió bien
+print(df_api)
+
+# --------------------------------------------------------
+# 3. INSERCIÓN DE LOS DATOS EN BIGQUERY (¡VAMOS CON TODO 🚀!)
+# --------------------------------------------------------
+
+try:
+    # Reutilizo el mismo cliente (podría recrearse, pero ya está listo aquí)
+    bigquery_client = BigQueryDatameshClientBuilder()\
+        .with_dme_name("DME_ATTACH_DME000418", env='DEV')\
+        .build()
+
+    print("Iniciando la inserción de los datos en BigQuery...")
+
+    # Nombre de la tabla de destino
+    table_id = 'ddme000418-dn88p8g386x-furyid.TBL.DM_SHOPEE_OFFICIAL_BRANDS'
+    
+    # Configuraciones del job de carga
+    job_config_attributes = {
+        "create_disposition": "CREATE_NEVER",  # No crea una tabla nueva
+        "mode": "replace"  # Reemplaza los datos existentes
+    }
+
+    # Inserto el DataFrame en BigQuery con las configuraciones definidas
+    bigquery_client.df_to_gbq(df_api, table_id, **job_config_attributes)
+
+    print("✅ Datos insertados exitosamente en BigQuery.")
+    
+except BigQueryClientBuilderError as builder_error:
+    print(f"Error al construir el cliente de BigQuery: {builder_error}")
+except Exception as e:
+    print(f"Ocurrió un error: {e}")
