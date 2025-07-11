@@ -261,7 +261,7 @@ except Exception as e:
     print(f"Error inesperado: {e}")
 
 # --------------------------------------------------------
-# 2. AJUSTES EN FIRST_APPEARENCE (¡HORA DE LIMPIAR 🔍!)
+# 2. AJUSTES EN FIRST_APPEARENCE (¡HORA DE LIMPIAR 🔍!) PQ ESQUECI SORRY
 # --------------------------------------------------------
 
 # Me aseguro de que la columna FIRST_APPEARENCE esté en formato datetime
