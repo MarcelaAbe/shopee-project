@@ -145,7 +145,7 @@ O CSV e a tabela BigQuery contêm:
 5. Verificar os dados na tabela BigQuery resultante
 6. Executar o tratamento e matching:
    ```bash
-   python input_match.py
+   python input_e_match.py
    ```
 
 ---
