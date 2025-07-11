@@ -1,3 +1,5 @@
+// Etapa #00
+
 const axios = require('axios'); // Usando axios para hacer las peticiones HTTP
 const fs = require('fs'); // Módulo nativo para manejar archivos, aunque acá ni lo terminé usando directamente
 const dayjs = require('dayjs'); // Librería para manejar fechas de forma sencilla
