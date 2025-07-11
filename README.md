@@ -1,18 +1,21 @@
 # Recolección de Tiendas Oficiales de Shopee por Categoría
 
-Este proyecto automatiza la recolección de datos de **tiendas oficiales** de Shopee, segmentadas por categoría, y su posterior procesamiento para normalización y carga en BigQuery.
+Este proyecto automatiza la recolección de datos de **tiendas oficiales** de Shopee, segmentadas por categoría, y su posterior procesamiento para normalización, comparación com dados do Mercado Livre e carga en BigQuery.
 
 ---
 
 ## 🤖 Resumen General
 
-El proceso consta de dos etapas principales:
+El proceso consta de tres etapas principales:
 
 1. **Crawler en Node.js**  
-   Se realiza la consulta a la API pública de Shopee por categoría para obtener las tiendas oficiales. Los datos se recolectan en formato JSON y se exportan a CSV con timestamp.  
+   Consulta la API pública de Shopee por categoría para obtener tiendas oficiales. Los datos se recolectan en formato JSON y se exportan a CSV con timestamp.
 
 2. **Tratamiento y Normalización en Python**  
-   El CSV generado es cargado en un DataFrame pandas para limpieza de nombres, normalización de cadenas, generación de IDs únicos (`UNIC_ID`) para marcas nuevas, verificación y actualización con datos históricos en BigQuery, y finalmente carga en una tabla BigQuery para análisis posteriores.
+   El CSV generado se limpia, normaliza, se generan IDs únicos (`UNIC_ID`) y se cruza con datos históricos en BigQuery.
+
+3. **Matching com Dados do Mercado Livre**  
+   Usa modelo BERT e regras heurísticas para comparar os nomes das lojas Shopee com dados de marcas do Mercado Livre, sem depender de uma chave única.
 
 ---
 
@@ -33,15 +36,29 @@ El proceso consta de dos etapas principales:
 - Genera `UNIC_ID` alfanumérico único para tiendas nuevas  
 - Consulta tabla histórica en BigQuery para reutilizar IDs existentes  
 - Agrega columnas de auditoría de fechas  
-- Carga y actualiza tabla BigQuery con datos limpios y normalizados
+- Convierte columna fecha scraping a formato datetime  
+- Elimina duplicatas com base en `(USERNAME_SHOPEE, BRAND_NAME_SHOPEE)`  
+- Gera chave composta `MATCH_KEY` para rastreabilidade e controle de unicidade  
+- Identifica e trata colisões de `UNIC_ID` entre marcas distintas  
+- Tabela final é preparada para particionamento por `DATE_SCRAPING`  
+- Realiza merge (upsert) dos dados no BigQuery com base no `UNIC_ID`, preservando o histórico
+
+### Matching com Dados do Mercado Livre
+
+- Usa modelo **BERT (RoBERTa)** para comparação semântica dos nomes de marca  
+- Complementa com **regras heurísticas** para tratar abreviações, kits, variações e ruído  
+- Não depende de uma chave exata de comparação  
+- Gera um mapeamento probabilístico entre lojas da Shopee e marcas do Meli  
+- Ajuda na consolidação e unificação de marcas para análises posteriores  
 
 ---
 
 ## 🧰 Tecnologías Utilizadas
 
 - **Node.js:** axios, dayjs, csv-writer  
-- **Python:** pandas, re, unicodedata, melitk.bigquery (cliente BigQuery)  
+- **Python:** pandas, re, unicodedata, melitk.bigquery, sentence-transformers  
 - **BigQuery:** almacenamiento y consulta de datos finales  
+- **Modelos de NLP:** RoBERTa/BERT para correspondência semântica  
 
 ---
 
@@ -57,24 +74,33 @@ El proceso consta de dos etapas principales:
 
 ### 2. Post-Procesamiento (Python)
 
-- Carga CSV en DataFrame pandas  
-- Normaliza columnas `USERNAME_SHOPEE` y `BRAND_NAME_SHOPEE`:  
-  - Mayúsculas, reemplazo de signos (`.`, `_`, `-`) por espacio  
-  - Elimina signos de puntuación y acentos  
-  - Sustituye `" & "` por `" E "`  
-- Detecta caracteres especiales no permitidos y los reporta  
-- Consulta tabla histórica en BigQuery para obtener IDs únicos existentes  
-- Para marcas nuevas genera IDs alfanuméricos únicos (5 dígitos)  
-- Actualiza DataFrame con `UNIC_ID`  
-- Añade columnas de auditoría de inserción y actualización con timestamps  
-- Convierte columna fecha scraping a formato datetime  
-- Carga datos actualizados en tabla BigQuery para almacenamiento final  
+- Carga CSV em DataFrame pandas  
+- Normaliza `USERNAME_SHOPEE` y `BRAND_NAME_SHOPEE`  
+  - Mayúsculas, remoção de sinais, acentos e caracteres duplicados  
+  - Substituição de `&` por `E`  
+- Gera `UNIC_ID` com base em marcas históricas no BigQuery  
+- Gera `MATCH_KEY` único  
+- Remove duplicatas  
+- Detecta colisões de `UNIC_ID`  
+- Adiciona colunas de auditoria (`AUD_INS_DTTM`, `AUD_UPD_DTTM`)  
+- Realiza merge/upsert com BigQuery  
+- Particiona por `DATE_SCRAPING`
+
+### 3. Matching com Mercado Livre (Input_e_match.py)
+
+- Carrega dados do Meli e Shopee  
+- Normaliza todos os nomes e marcas  
+- Aplica modelo **BERT (RoBERTa)** para gerar embeddings dos nomes  
+- Calcula similaridade semântica entre marcas Shopee e Meli  
+- Complementa com regras (kits, abreviações, quantidades, etc.)  
+- Classifica os matches por nível de confiança (Alto, Médio, Baixo)  
+- Exporta os matches e atualiza mapeamento para uso posterior  
 
 ---
 
 ## 📝 Campos Exportados
 
-El CSV y la tabla BigQuery contienen:
+O CSV e a tabela BigQuery contêm:
 
 - index  
 - total  
@@ -94,6 +120,7 @@ El CSV y la tabla BigQuery contienen:
 - url_to  
 - data_requisicao  
 - UNIC_ID  
+- MATCH_KEY  
 - AUD_INS_DTTM  
 - AUD_UPD_DTTM  
 - DATE_SCRAPING  
@@ -106,24 +133,26 @@ El CSV y la tabla BigQuery contienen:
 2. Instalar dependencias Node.js:  
    ```bash
    npm install axios dayjs csv-writer
-3. Ejecuta el script:
- `node crawler.js`  
-5. El CSV será guardado automáticamente en la raíz del proyecto con la fecha del día en el nombre.
-6. Ejecutar script Python para post-procesamiento y carga a BigQuery:
-  `node input_tabla_scraper.py`
-7. Verificar resultados y datos en BigQuery
+   ```
+3. Ejecutar el crawler:
+   ```bash
+   node crawler.js
+   ```
+4. Executar o tratamento e input de tablas:
+   ```bash
+   python input_tabla_scraper.py
+   ```
+5. Verificar os dados na tabela BigQuery resultante
+6. Executar o tratamento e matching:
+   ```bash
+   python input_match.py
+   ```
+
+---
 
 ## 📌 Notas
 
-- La categoría con ID "-1" es la página principal con tiendas no categorizadas
-- Se recomienda eliminar duplicados en post-procesamiento
-- El proceso genera IDs únicos para las marcas nuevas, reutilizando las ya existentes
-
-
-## 📎 Posibles Extensiones
-
-- Integración directa con BigQuery para no generar csv 
-- Automatizar la ejecución periódica con cron
-- Mejorar limpieza y validación de datos
-- Integración con dashboard para monitoreo en tiempo real
-- Manejo avanzado de duplicados y consolidación de tiendas
+- A categoria com ID `-1` representa a página principal com lojas não categorizadas  
+- Todos os nomes são padronizados antes da comparação para aumentar a eficácia do matching  
+- A combinação de BERT + regras garante cobertura mais robusta mesmo sem chave de união  
+- IDs únicos (`UNIC_ID`) são preservados entre execuções para garantir rastreabilidade  
