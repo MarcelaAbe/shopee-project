@@ -1,0 +1,59 @@
+[tool.poetry]
+name = "app"
+version = "0.0.0"
+description = "FDA 2 application"
+authors = []
+classifiers = [
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11"
+]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.12"
+fda-toolkit = "^3.1.2"
+# This is an example of how to add an optional dependency
+# melitk-bigquery = {version = "^2.3.1", optional = true}
+
+#
+# Section to specify optional dependencies defined in mlp-config.yml file
+# https://furydocs.io/mlp-config/guide/#/schemas/dw/schema?id=how-to-install-extras-dependencies-in-my-tasks
+#
+# [tool.poetry.extras]
+# etl_dataset_extras = ["melitk-bigquery"]
+melitk-bigquery = "^2.4.0"
+pandas = "^2.2.3"
+bs4 = "^0.0.2"
+selenium = "^4.25.0"
+melitk = "^0.14.1"
+tqdm = "^4.66.5"
+webdriver-manager = "^4.0.2"
+oauth2client = "^4.1.3"
+unidecode = "^1.3.8"
+requests = "^2.32.3"
+beautifulsoup4 = "^4.12.3"
+scikit-learn = "^1.6.1"
+scipy = "^1.15.2"
+torch = "^2.2.0"
+transformers = "^4.51.3"
+sentence-transformers = "^4.0.2"
+rapidfuzz = "^3.13.0"
+jellyfish = "^1.2.0"
+fuzzywuzzy = "^0.18.0"
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.2.0"
+pytest-mock = "^3.10.0"
+pytest-cov = "^4.0.0"
+
+[[tool.poetry.source]]
+name = "meli"
+url = "https://pypi.artifacts.furycloud.io/simple/"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+addopts = "--verbose --junit-xml=report.xml --cov --cov-report=xml:coverage.xml"
